@@ -10,7 +10,7 @@ import time
 import typing
 import warnings
 from pathlib import Path
-from urllib.request import getproxies
+from urllib.request import getproxies_environment
 
 import sniffio
 
@@ -282,6 +282,43 @@ def same_origin(url: "URL", other: "URL") -> bool:
         and url.host == other.host
         and port_or_default(url) == port_or_default(other)
     )
+
+
+if sys.platform == "win32":
+    from urllib.request import getproxies_registry
+
+    def getproxies_override_registry() -> typing.List[str]:
+        try:
+            import winreg
+        except ImportError:
+            return []
+        try:
+            internetSettings = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            )
+            proxyOverride = str(
+                winreg.QueryValueEx(internetSettings, "ProxyOverride")[0]
+            )
+            return proxyOverride.split(";")
+        except OSError:
+            return []
+
+    def getproxies_sys() -> typing.Dict[str, str]:
+        proxies = getproxies_registry()
+        proxies_override_registry = getproxies_override_registry()
+        proxies["no"] = ",".join(proxies_override_registry)
+        return proxies
+
+    def getproxies() -> typing.Dict[str, str]:
+        proxies: typing.Dict[str, str] = getproxies_environment()
+        if not proxies:
+            return getproxies_sys()
+        return proxies
+
+
+else:
+    from urllib.request import getproxies
 
 
 def get_environment_proxies() -> typing.Dict[str, typing.Optional[str]]:
