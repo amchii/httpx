@@ -317,8 +317,47 @@ if sys.platform == "win32":
         return proxies
 
 
+elif sys.platform == "darwin":
+    from _scproxy import _get_proxy_settings, _get_proxies
+
+    def getproxies_exceptions_sysconf() -> typing.List[str]:
+        """
+        proxy_settings come from _scproxy._get_proxy_settings or get mocked ie:
+        { 'exclude_simple': bool,
+          'exceptions': ['foo.bar', '*.bar.com', '127.0.0.1', '10.1', '10.0/16']
+        },
+        but we do not support simple hostname and subnet matching
+        """
+        proxy_settings_sysconf = _get_proxy_settings()
+        exceptions = []
+        for value in proxy_settings_sysconf.get("exceptions", ()):
+            # Do not support subnet matching
+            if "/" in value:
+                continue
+            # Convert ip like '10.1' to '10.1*'
+            m = re.match(r"(\d+(?:\.\d+)*)", value)
+            if m is not None:
+                exceptions.append(m.group(1) + r"*")
+            else:
+                # Form like 'foo.bar' or '*.bar.com'
+                exceptions.append(value)
+        return exceptions
+
+    def getproxies_sys() -> typing.Dict[str, str]:
+        proxies = _get_proxies()
+        proxies_exceptions_sysconf = getproxies_exceptions_sysconf()
+        proxies["no"] = ",".join(proxies_exceptions_sysconf)
+        return proxies
+
+    def get_proxies() -> typing.Dict[str, str]:
+        proxies: typing.Dict[str, str] = getproxies_environment()
+        if not proxies:
+            return getproxies_sys()
+        return proxies
+
+
 else:
-    from urllib.request import getproxies
+    getproxies = getproxies_environment
 
 
 def get_environment_proxies() -> typing.Dict[str, typing.Optional[str]]:
