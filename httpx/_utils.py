@@ -489,15 +489,15 @@ class URLPattern:
         else:
             if url.host.startswith("*."):
                 # *.example.com should match "www.example.com", but not "example.com"
-                domain = re.escape(url.host[2:])
+                domain = url.host[2:].replace(".", r"\.").replace("*", ".*?")
                 self.host_regex = re.compile(f"^.+\\.{domain}$")
             elif url.host.startswith("*"):
                 # *example.com should match "www.example.com" and "example.com"
-                domain = re.escape(url.host[1:])
+                domain = url.host[1:].replace(".", r"\.").replace("*", ".*?")
                 self.host_regex = re.compile(f"^(.+\\.)?{domain}$")
             else:
                 # example.com should match "example.com" but not "www.example.com"
-                domain = re.escape(url.host)
+                domain = url.host.replace(".", r"\.").replace("*", ".*?")
                 self.host_regex = re.compile(f"^{domain}$")
 
     def matches(self, other: "URL") -> bool:
