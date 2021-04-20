@@ -287,7 +287,7 @@ def same_origin(url: "URL", other: "URL") -> bool:
 if sys.platform == "win32":
     from urllib.request import getproxies_registry
 
-    def getproxies_override_registry() -> typing.List[str]:
+    def getproxy_override_registry() -> typing.List[str]:
         try:
             import winreg
         except ImportError:
@@ -306,7 +306,7 @@ if sys.platform == "win32":
 
     def getproxies_sys() -> typing.Dict[str, str]:
         proxies = getproxies_registry()
-        proxies_override_registry = getproxies_override_registry()
+        proxies_override_registry = getproxy_override_registry()
         proxies["no"] = ",".join(proxies_override_registry)
         return proxies
 
@@ -318,9 +318,13 @@ if sys.platform == "win32":
 
 
 elif sys.platform == "darwin":
-    from _scproxy import _get_proxy_settings, _get_proxies
+    try:
+        from _scproxy import _get_proxy_settings, _get_proxies
+    except ImportError:
+        _get_proxy_settings = None
+        _get_proxies = None
 
-    def getproxies_exceptions_sysconf() -> typing.List[str]:
+    def getproxy_exceptions_sysconf() -> typing.List[str]:
         """
         proxy_settings come from _scproxy._get_proxy_settings or get mocked ie:
         { 'exclude_simple': bool,
@@ -328,6 +332,8 @@ elif sys.platform == "darwin":
         },
         but we do not support simple hostname and subnet matching
         """
+        if _get_proxy_settings is None:
+            return []
         proxy_settings_sysconf = _get_proxy_settings()
         exceptions = []
         for value in proxy_settings_sysconf.get("exceptions", ()):
@@ -344,8 +350,10 @@ elif sys.platform == "darwin":
         return exceptions
 
     def getproxies_sys() -> typing.Dict[str, str]:
+        if _get_proxies is None:
+            return []
         proxies = _get_proxies()
-        proxies_exceptions_sysconf = getproxies_exceptions_sysconf()
+        proxies_exceptions_sysconf = getproxy_exceptions_sysconf()
         proxies["no"] = ",".join(proxies_exceptions_sysconf)
         return proxies
 
