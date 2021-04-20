@@ -1,3 +1,5 @@
+from unittest import mock
+
 import httpcore
 import pytest
 
@@ -270,3 +272,82 @@ def test_for_deprecated_proxy_params(proxies, expected_scheme):
     warning_message = str(block.pop(DeprecationWarning))
 
     assert expected_scheme in warning_message
+
+
+@pytest.mark.skipif("sys.platform != 'win32'")
+@pytest.mark.parametrize(
+    ["proxies", "proxies_override"],
+    [
+        (
+            {
+                "http": "http://127.0.0.1:1080",
+                "https": "https://127.0.0.1:1080",
+                "ftp": "ftp://127.0.0.1:1080",
+            },
+            ["127.0.0.1", "192.168.*"],
+        )
+    ],
+)
+@pytest.mark.parametrize(
+    ["url", "expected"],
+    [
+        ("http://192.168.3.1:8000", None),
+        ("http://127.0.0.2:8000", "http://127.0.0.1:1080"),
+        ("http://127.0.0.1:8000", None),
+    ],
+)
+@pytest.mark.parametrize("client_class", [httpx.Client, httpx.AsyncClient])
+def test_windows_proxy_override_registry(
+    client_class, proxies, proxies_override, url, expected
+):
+    with mock.patch(
+        "httpx._utils.getproxies_registry", return_value=proxies
+    ), mock.patch(
+        "httpx._utils.getproxy_override_registry", return_value=proxies_override
+    ):
+        client = client_class()
+        transport = client._transport_for_url(httpx.URL(url))
+        if expected is None:
+            assert transport == client._transport
+        else:
+            assert transport._pool.proxy_origin == url_to_origin(expected)
+
+
+@pytest.mark.skipif("sys.platform != 'darwin'")
+@pytest.mark.parametrize(
+    ["proxies", "proxies_exceptions"],
+    [
+        (
+            {"http": "http://127.0.0.1:1080", "https": "https://127.0.0.1:1080"},
+            ["127.0.0.1", "192.168", "172.22.3/24", "foo.bar", "*.bar.com"],
+        )
+    ],
+)
+@pytest.mark.parametrize(
+    ["url", "expected"],
+    [
+        ("http://127.0.0.1:8000", None),
+        ("http://127.0.0.2:8000", "http://127.0.0.1:1080"),
+        ("http://192.168.3.1:8000", None),
+        ("http://172.22.3.1:8000", None),
+        ("http://172.22.4.1:8000", "http://127.0.0.1:1080"),
+        ("http://foo.bar", None),
+        ("http://foo.bar.com", None),
+        ("http://bar.com", "http://127.0.0.1:1080"),
+    ],
+)
+@pytest.mark.parametrize("client_class", [httpx.Client, httpx.AsyncClient])
+def test_macosx_proxy_exceptions_sysconf(
+    client_class, proxies, proxies_exceptions, url, expected
+):
+    with mock.patch("sys.platform", "darwin"):
+        with mock.patch("httpx._utils._get_proxies", return_value=proxies), mock.patch(
+            "httpx._utils._get_proxy_settings",
+            return_value={"exceptions": proxies_exceptions},
+        ):
+            client = client_class()
+            transport = client._transport_for_url(httpx.URL(url))
+            if expected is None:
+                assert transport == client._transport
+            else:
+                assert transport._pool.proxy_origin == url_to_origin(expected)
